@@ -1,39 +1,40 @@
 import sys
-import json
 import functools
 import pandas as pd
 from datetime import datetime
 from google.oauth2 import service_account
 from google.cloud import storage, bigquery as bq
 from colorama import Fore, Back, Style
+from secret_manager import get_secret
 
-sys.path.append("/mnt/c/Users/Asus/Desktop/cloud-space-workspace/Taylors/taylors-data-poc")
+sys.path.append("/home/working_directory")
 from python_utils.bigquery import *
 from python_utils.utils import *
 from python_utils.formats import *
 from python_utils.json import *
 from python_utils.modify_cols import *
-from gis_custom import *
 
 # force flushing for logs
 sys.stdout = open(sys.stdout.fileno(), 'w', buffering=1)
-sys.stderr = open(sys.stdout.fileno(), 'w', buffering=1)
+sys.stderr = open(sys.stderr.fileno(), 'w', buffering=1)
 print = functools.partial(print, flush=True)
 PYTHONUNBUFFERED = True
 
-# iSAMS creds
-CLIENT_ID = 'CDB67D0C-DD89-4109-BB4A-CA6B4CE46236'
-CLIENT_SECRET = '56F2AC9F-8052-43A1-85D6-A5C09CCBBEB1'
-TOKEN_URL = 'https://gardenschool.isamshosting.cloud/auth/connect/token'
-API_BASE_URL = 'https://gardenschool.isamshosting.cloud'
-
 # GCP Creds
-KEY_PATH = "/mnt/c/Users/Asus/Desktop/cloud-space-workspace/Taylors/taylors-data-poc/json-keys"
-KEY_NAME = 'taylors-poc-data-pipeline.json'
+KEY_PATH = "Path to folder containing Service Account Keys"
+KEY_NAME = 'Service Account JSON key file'
 SERVICE_ACC_KEY = f'{KEY_PATH}/{KEY_NAME}'
 
 service_acc_creds = service_account.Credentials.from_service_account_file(SERVICE_ACC_KEY)
 bq_client = bq.Client(credentials=service_acc_creds, project=service_acc_creds.project_id)
+
+# iSAMS creds from Secret Manager
+SECRET_ID = "isams_api_credentials"
+secret_payload = get_secret(SECRET_ID, service_acc_creds.project_id, service_acc_creds)
+CLIENT_ID = secret_payload["CLIENT_ID"]
+CLIENT_SECRET = secret_payload["CLIENT_SECRET"]
+TOKEN_URL = secret_payload["TOKEN_URL"]
+API_BASE_URL = secret_payload["API_BASE_URL"]
 
 def year_group_division():
 	access_token = gen_access_token(TOKEN_URL, CLIENT_ID, CLIENT_SECRET, API_BASE_URL)
