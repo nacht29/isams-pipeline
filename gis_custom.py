@@ -5,32 +5,38 @@ from datetime import datetime
 from google.oauth2 import service_account
 from google.cloud import storage, bigquery as bq
 from colorama import Fore, Back, Style
-from secret_manager import get_secret
 
+# append the path leading to python_utils, e.g. python_utils is in /home/working_directory/python_utils
 sys.path.append("/home/working_directory")
+from python_utils.secret_manager import get_secret
 from python_utils.bigquery import *
 from python_utils.utils import *
 from python_utils.formats import *
 from python_utils.json import *
 from python_utils.modify_cols import *
+from gis_custom import *
 
-# force flushing for logs
+# force flushing to ensure logs appear in log file immediately during execution
 sys.stdout = open(sys.stdout.fileno(), 'w', buffering=1)
 sys.stderr = open(sys.stderr.fileno(), 'w', buffering=1)
 print = functools.partial(print, flush=True)
 PYTHONUNBUFFERED = True
 
-# GCP Creds
+# Service Account Credentials
 KEY_PATH = "Path to folder containing Service Account Keys"
 KEY_NAME = 'Service Account JSON key file'
 SERVICE_ACC_KEY = f'{KEY_PATH}/{KEY_NAME}'
 
+# retrieve Service Account credentials
+# build BigQuery API Client
 service_acc_creds = service_account.Credentials.from_service_account_file(SERVICE_ACC_KEY)
 bq_client = bq.Client(credentials=service_acc_creds, project=service_acc_creds.project_id)
 
-# iSAMS creds from Secret Manager
+# retrieve OAuth2 client credentials from Secret Manager
 SECRET_ID = "isams_api_credentials"
 secret_payload = get_secret(SECRET_ID, service_acc_creds.project_id, service_acc_creds)
+
+# Set OAuth2 client credentials
 CLIENT_ID = secret_payload["CLIENT_ID"]
 CLIENT_SECRET = secret_payload["CLIENT_SECRET"]
 TOKEN_URL = secret_payload["TOKEN_URL"]
