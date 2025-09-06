@@ -81,7 +81,7 @@ A demonstration on building a data pipeline that moves data from iSAMS API endpo
 1. Include service account credentials: modify this part in `iSAMS.py`:
 	- `KEY_PATH`: path to the directory that contains your service account key.
 	- `KEY_NAME`: name of the service account key.
-        - This setup allows you to store and use multiple keys.
+    - This setup allows you to store and use multiple keys.
 	```python
 	# Service Account Credentials
 	KEY_PATH = "Path to folder containing Service Account Keys"
@@ -269,9 +269,8 @@ Schedule a trigger for `isams_pipeline.sh`.
 ## Custom Pipelines
 
 ### Introduction
-
-`custom.py` allows you to add custom functions to process certain endpoints.
-`custom.py` already includes an example: `year_group_division` and a `custom_pipelines()` hook.
+- `custom.py` allows you to add custom functions to process certain endpoints.
+`- custom.py` already includes an example: `year_group_division` and a `custom_pipelines()` hook.
 
 ### Steps
 
