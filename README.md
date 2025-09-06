@@ -1,10 +1,10 @@
-# isams-pipeline
+# isams_pipeline
 
 A demonstration on building a data pipeline that moves data from iSAMS API endpoints to BigQuery.
 
-## High-level Architecture
+## High-level crchitecture
 
-<img src="docs/architecture.png" alt="Pipeline Architecture" width="600"/>
+<img src="docs/architecture.png" alt="Pipeline architecture" width="600"/>
 
 
 **Explanation:**
@@ -16,7 +16,7 @@ A demonstration on building a data pipeline that moves data from iSAMS API endpo
 
 ---
 
-## Set Up
+## Set up
 
 ### Prerequisites
 1. GCP project with BigQuery and Secret Manager enabled
@@ -116,7 +116,16 @@ A demonstration on building a data pipeline that moves data from iSAMS API endpo
 	```
 
 ### Pipeline configuration
-1. `python_utils.formats.py`:
+1. Add the pipeline data to the `isams_dataset_endpoints` dictionary in `python_utils/formats.py`:
+	- key: The name of the endpoint.
+	- values:
+		- `url`: The endpoint URL.
+		- `object`: The object containing data to be extracted from the JSON payload received from the HTTP request.
+		- `pages`: Use `'single-page'` if the API endpoint only contains one page of data and `'multi-page'` if it contains multiple pages of data. Multi-page endpoints will usually be able to accept parameters such as `{'page': 1, 'pageSize': 1}`.
+		- `table_id`: The table ID of the table to load the data to in BigQuery.
+		- `schema`: Schema definition for the data to be uploaded. This hard-sets the data type of the uploaded data.
+
+	**Endpoint data:**
 
 	```py
 	isams_dataset_endpoints = {
@@ -144,32 +153,128 @@ A demonstration on building a data pipeline that moves data from iSAMS API endpo
 			'schema': year_groups_schema
 		}
 	}
+
 	```
 
-- Map iSAMS endpoints to BigQuery tables in `custom.py` and `python_utils/formats.py`.
-- Tweak transformation helpers in `python_utils/modify_cols.py` if the raw fields need a polish.
+	**Schema definition:**
+	```py
+	school_terms_schema = [
+		bq.SchemaField("id", "INTEGER", mode="NULLABLE"),
+		bq.SchemaField("finishDate", "DATETIME", mode="NULLABLE"),
+		bq.SchemaField("name", "STRING", mode="NULLABLE"),
+		bq.SchemaField("schoolYear", "INTEGER", mode="NULLABLE"),
+		bq.SchemaField("startDate", "DATETIME", mode="NULLABLE"),
+	]
+	```
 
-### Run it
-```bash
-python iSAMS.py
-```
+2. Add a function to modify the data received from the endpoint in `python_utils/modify_cols.py`. E.g. you want to modify the date format of certain columns in  `school_terms` endpoint:
+	```py
+	import pandas as pd
+
+	TIMEZONE = 'Asia/Singapore'
+
+	def parse_datetime_utc8(date_col:pd.Series) -> pd.Series:
+		date_col = pd.to_datetime(date_col, utc=True, errors="coerce")
+		return date_col.dt.tz_convert(TIMEZONE)
+	def school_terms_mod(terms_df:pd.DataFrame):
+		date_cols = ['finishDate', 'startDate']
+
+		for date_col in date_cols:
+			terms_df[date_col] = parse_datetime_utc8(terms_df[date_col])
+
+		return terms_df
+	```
+
+3. In `iSAMS.py`, add the modification function to `mod_endpoints()`.
+	```py
+	def mod_endpoints(endpoint, df:pd.DataFrame):
+		match endpoint:
+			case 'school_terms':
+				return school_terms_mod(df)
+		
+		return df
+	```
+
+4. In `main()`, there is an if condition that allows you to selectively process endpoints:
+	```py
+	# selectively run endpoints:
+	if endpoint not in []:
+		continue
+	```
+
+	Simply add the name of the endpoint you want to process to the list:
+	```py
+		# selectively run endpoints:
+		if endpoint not in ['students']:
+			continue
+	```
+
+	The other endpoints will be skipped.
+
+### Script logic:
+You have finished the configuration for the main process. This is what happens when you execute the script:
+
+1. The script iterates through each endpoint and process them according to their ``page`` type as defined in `python_utils/formats.py`.
+	- `'single-page'` endpoints will trigger `single_page_endpoint()` function and have its data received and loaded in one go.
+	- `'multi-page'` endpoints will trigger `multi_page_endpoint()` fucntion which processes and loads data by every 1000 row as it needs to go through multiple pages.
+	- Both functions have the option to append to or truncate the target BigQuery table. Use append by setting `trunc_flag` to `True` and truncate mode by setting `trunc_flag` to `False`.
+
+2. When `single_page_endpoint()` or `multi_page_endpoint()` function is called, it will call `mod_endpoints()` function to trigger the function in `python_utils/modify_cols.py` to modify the data for specific endpoints.
 
 ---
 
 ## Scheduling
 
+### Job script: `isams_pipeline.sh` 
+1. `isams_pipeline.sh` assumes the script is stored in `/home/isams_pipeline/`. If you use a different directory, do change the working directory here:
+	```bash
+	# Main pipeline execution
+	{
+		echo "===== START: $(date) ====="
+		cd /home/isams_pipeline/ || exit 1
+		source myvenv/bin/activate
+		cd /home/isams_pipeline/ || exit 1
+		python iSAMS.py 2>&1
+		echo "===== END: $(date) ====="
+	} | tee -a "$LOG_FILE"
+	```
+
+2. `isams_pipeline.sh` is used to:
+	- trigger the Python script
+	- handle logging
+	- intercept error messages and failed executions
+
+3. Logging logic:
+	- Truncate `/var/log/isams_pipeline.log` to clear previous logs.
+	- Write logs to `/var/log/isams_pipeline.log`.
+	- Create a copy of `/var/log/isams_pipeline.log` with a timestamp (`/var/log/isams_pipeline_TIMESTAMP.log`).
+	- Save the log file in an archive folder `/var/log/isams_pipeline_arch`.
+	- This happens during every execution.
+
+### Cron scheduler
+
+Schedule a trigger for `isams_pipeline.sh`.
+
 ```bash
-placeholder
+00 06 * * * sudo bash /home/isams_pipeline/isams_pipeline.sh
 ```
 
 ---
 
-## Custom Pipelines
+## Custom pipelines
 
-`custom.py` includes an example: `year_group_division` and a `custom_pipelines()` hook. Use this spot for add-on workflows or experimental endpoints.
+### Introduction:
+`custom.py` allows you to add functions to add custom functions to process certain endpoints.
+`custom.py` already includes an example: `year_group_division` and a `custom_pipelines()` hook.
+
+### Steps:
+1. Define your custom functions for processing endpoints in `custom.py`.
+2. Add the function call to `custom_pipelines()`.
+3. Call `custom_pipelines()` in your `main()` function in `iSAMS.py`.
 
 ---
 
-## Alternatives
+## Improvements
 
 Once you have finished your pipeline configurations, consider dockerising the script and use Cron or any other scheduler to run the docker image.
+This makes the pipeline easier to manage.
