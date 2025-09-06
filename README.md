@@ -1,44 +1,32 @@
 # isams-pipeline
 
-A lightweight toolkit for piping data from iSAMS into BigQuery. Use it as-is or bolt on extra pieces for your own flavour of ETL/ELT.
+A demonstration on building a data pipeline that moves data from iSAMS API endpoints to BigQuery.
 
-## Architecture
+## High-level Architecture
 
-```
-+---------------+      +---------------------+      +-----------+
-| Cloud Scheduler| --->| Python runtime      | ---> | BigQuery  |
-| or cron job    |     | (`iSAMS.py`)    |     | datasets  |
-+-------+-------+      |  ↓ secrets       |      +-----------+
-        |              |  Secret Manager     |
-        |              +----------+----------+
-        |                         |
-        |                         v
-        |                 (optional) Cloud Storage
-        |
-        v
-   iSAMS API
-```
+![alt text](image.png)
 
-1. A scheduler triggers `iSAMS.py`.
+**Explanation:**
+1. A scheduler in the Compute Engine Instance triggers `iSAMS.py`.
 2. The script pulls OAuth2 creds from Secret Manager.
-3. iSAMS endpoints are queried and shaped with `pandas`.
-4. Clean data lands in BigQuery.
-5. Optional: stash raw files in Cloud Storage.
+3. The script sends HTTP requests to iSAMS API endpoints and receive data payloads in the form of JSON strings.
+4. The payloads are processed with Python and loaded to BigQuery.
+5. You can further model the data in BigQuery.
 
-## Getting Started
+---
+
+## Set Up
 
 ### Prerequisites
-- GCP project with BigQuery, Secret Manager and (optionally) Cloud Storage enabled
-- iSAMS OAuth2 client (client ID/secret, token URL and base API URL)
-- Service account with BigQuery + Secret Manager access
-- Python 3.11+
-
-### Install dependencies
-```bash
-git clone <this repo>
-cd isams-pipeline
-bash install.sh  # installs Google + pandas goodies
-```
+1. GCP project with BigQuery and Secret Manager enabled
+2. iSAMS API OAuth2 client credentials:
+	- client ID
+	- client secret
+3. iSAMS API endpoints:
+	- base URL
+	- endpoint URLS
+4. Service account with BigQuery + Secret Manager access
+5. Python 3.11+
 
 ### Store OAuth2 credentials in Secret Manager
 
@@ -66,8 +54,97 @@ bash install.sh  # installs Google + pandas goodies
 
 3. Give your service account the `roles/secretmanager.secretAccessor` role so the script can receive the payload using service account credentials.
 
-### Configure the pipeline
-- Drop your service account JSON key in the location referenced by `KEY_PATH`/`KEY_NAME` in `iSAMS.py`.
+### Python dependencies
+1. Create and activate a Python virtual environment (venv) to install dependencies.
+
+	```bash
+	python3 -m venv myvenv
+	source myvenv/bin/activate
+	```
+
+2. Install the dependencies
+	```bash
+	pip install --upgrade dask pandas pandas-gbq numpy openpyxl xlsxwriter xlrd db-dtypes SQLAlchemy
+	pip install --upgrade google-api-python-client pydrive
+	pip install --upgrade google-cloud-bigquery google-cloud-storage google-cloud-bigquery-storage
+	pip install --upgrade google-cloud-secret-manager google-auth google-auth-oauthlib google-auth-httplib2
+	pip install --upgrade colorama
+	```
+---
+
+## Execution
+
+### Credentials configuration
+1. Include service account credentials: modify this part in `iSAMS.py`:
+	- `KEY_PATH`: path to the directory that contains your service account key.
+	- `KEY_NAME`: name of the service account key.
+	- This set up allows you to store and use multiple keys.
+	```python
+	# Service Account Credentials
+	KEY_PATH = "Path to folder containing Service Account Keys"
+	KEY_NAME = 'Service Account JSON key file'
+	SERVICE_ACC_KEY = f'{KEY_PATH}/{KEY_NAME}'
+	```
+
+2. Create a service account credentials object. This allows you to access resources the service account is granted permission to.
+	```py
+	# retrieve Service Account credentials
+	service_acc_creds = service_account.Credentials.from_service_account_file(SERVICE_ACC_KEY)
+	```
+
+3. Retrieve OAuth2 client credentials from Secret Manager. This allows the script to send HTTP requests to iSAMS API endpoints.
+	```py
+	# retrieve Service Account credentials
+	service_acc_creds = service_account.Credentials.from_service_account_file(SERVICE_ACC_KEY)
+
+	# retrieve OAuth2 client credentials from Secret Manager
+	SECRET_ID = "isams_api_credentials"
+	secret_payload = get_secret(SECRET_ID, service_acc_creds.project_id, service_acc_creds)
+
+	# Set OAuth2 client credentials
+	CLIENT_ID = secret_payload["CLIENT_ID"]
+	CLIENT_SECRET = secret_payload["CLIENT_SECRET"]
+	TOKEN_URL = secret_payload["TOKEN_URL"]
+	API_BASE_URL = secret_payload["API_BASE_URL"]
+	```
+
+4. Build a BigQuery client object to allow your script to communicate with BigQuery.
+	```py
+	# build BigQuery API Client
+	bq_client = bq.Client(credentials=service_acc_creds, project=service_acc_creds.project_id)
+	```
+
+### Pipeline configuration
+1. `python_utils.formats.py`:
+
+	```py
+	isams_dataset_endpoints = {
+		'students': {
+			'url': '/api/students',
+			'object': 'students',
+			'pages': 'multi-page',
+			'table_id': 'project_id.dataset.students',
+			'schema': students_schema,
+		},
+		
+		'school_terms': {
+			'url': '/api/school/terms',
+			'object': 'terms',
+			'pages': 'single-page',
+			'table_id': 'project_id.dataset.school_terms',
+			'schema': school_terms_schema
+		},
+		
+		'year_groups' : {
+			'url': '/api/school/yeargroups',
+			'object': 'yearGroups',
+			'pages': 'single-page',
+			'table_id': 'project_id.dataset.year_groups',
+			'schema': year_groups_schema
+		}
+	}
+	```
+
 - Map iSAMS endpoints to BigQuery tables in `custom.py` and `python_utils/formats.py`.
 - Tweak transformation helpers in `python_utils/modify_cols.py` if the raw fields need a polish.
 
@@ -75,8 +152,23 @@ bash install.sh  # installs Google + pandas goodies
 ```bash
 python iSAMS.py
 ```
-Schedule it via cron, Cloud Scheduler + Cloud Run, or any other runner you fancy.
 
-## Custom pipelines
+---
 
-`custom.py` includes an example (`year_group_division`) and a `custom_pipelines()` hook. Use this spot for add-on workflows or experimental endpoints.
+## Scheduling
+
+```bash
+placeholder
+```
+
+---
+
+## Custom Pipelines
+
+`custom.py` includes an example: `year_group_division` and a `custom_pipelines()` hook. Use this spot for add-on workflows or experimental endpoints.
+
+---
+
+## Alternatives
+
+Once you have finished your pipeline configurations, consider dockerising the script and use Cron or any other scheduler to run the docker image.

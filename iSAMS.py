@@ -28,9 +28,7 @@ KEY_NAME = 'Service Account JSON key file'
 SERVICE_ACC_KEY = f'{KEY_PATH}/{KEY_NAME}'
 
 # retrieve Service Account credentials
-# build BigQuery API Client
 service_acc_creds = service_account.Credentials.from_service_account_file(SERVICE_ACC_KEY)
-bq_client = bq.Client(credentials=service_acc_creds, project=service_acc_creds.project_id)
 
 # retrieve OAuth2 client credentials from Secret Manager
 SECRET_ID = "isams_api_credentials"
@@ -41,6 +39,9 @@ CLIENT_ID = secret_payload["CLIENT_ID"]
 CLIENT_SECRET = secret_payload["CLIENT_SECRET"]
 TOKEN_URL = secret_payload["TOKEN_URL"]
 API_BASE_URL = secret_payload["API_BASE_URL"]
+
+# build BigQuery API Client
+bq_client = bq.Client(credentials=service_acc_creds, project=service_acc_creds.project_id)
 
 # get the total number of objects in JSON payload from multi-page endpoints
 def get_totalCount(access_token:str, full_api_path:str):
