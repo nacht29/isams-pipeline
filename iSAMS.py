@@ -14,7 +14,7 @@ from python_utils.utils import *
 from python_utils.formats import *
 from python_utils.json import *
 from python_utils.modify_cols import *
-from gis_custom import *
+from custom import *
 
 # force flushing to ensure logs appear in log file immediately during execution
 sys.stdout = open(sys.stdout.fileno(), 'w', buffering=1)
