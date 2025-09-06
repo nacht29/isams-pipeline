@@ -2,34 +2,34 @@
 
 A demonstration on building a data pipeline that moves data from iSAMS API endpoints to BigQuery.
 
-## High-level crchitecture
+## High-level Architecture
 
 <img src="docs/architecture.png" alt="Pipeline architecture" width="600"/>
-
 
 **Explanation:**
 1. A scheduler in the Compute Engine Instance triggers `iSAMS.py`.
 2. The script pulls OAuth2 creds from Secret Manager.
-3. The script sends HTTP requests to iSAMS API endpoints and receive data payloads in the form of JSON strings.
+3. The script sends HTTP requests to iSAMS API endpoints and receives data payloads in the form of JSON strings.
 4. The payloads are processed with Python and loaded to BigQuery.
 5. You can further model the data in BigQuery.
 
 ---
 
-## Set up
+## Set Up
 
 ### Prerequisites
+
 1. GCP project with BigQuery and Secret Manager enabled
 2. iSAMS API OAuth2 client credentials:
 	- client ID
 	- client secret
 3. iSAMS API endpoints:
 	- base URL
-	- endpoint URLS
+        - endpoint URLs
 4. Service account with BigQuery + Secret Manager access
 5. Python 3.11+
 
-### Store OAuth2 credentials in Secret Manager
+### Store OAuth2 Credentials in Secret Manager
 
 1. This project retrieves OAuth2 client credentials from [Secret Manager](https://cloud.google.com/secret-manager) using the secret ID `isams_api_credentials`. Store the credentials as a JSON payload:
 
@@ -55,7 +55,8 @@ A demonstration on building a data pipeline that moves data from iSAMS API endpo
 
 3. Give your service account the `roles/secretmanager.secretAccessor` role so the script can receive the payload using service account credentials.
 
-### Python dependencies
+### Python Dependencies
+
 1. Create and activate a Python virtual environment (venv) to install dependencies.
 
 	```bash
@@ -63,7 +64,7 @@ A demonstration on building a data pipeline that moves data from iSAMS API endpo
 	source myvenv/bin/activate
 	```
 
-2. Install the dependencies
+2. Install the dependencies.
 	```bash
 	pip install --upgrade dask pandas pandas-gbq numpy openpyxl xlsxwriter xlrd db-dtypes SQLAlchemy
 	pip install --upgrade google-api-python-client pydrive
@@ -75,11 +76,12 @@ A demonstration on building a data pipeline that moves data from iSAMS API endpo
 
 ## Execution
 
-### Credentials configuration
+### Credentials Configuration
+
 1. Include service account credentials: modify this part in `iSAMS.py`:
 	- `KEY_PATH`: path to the directory that contains your service account key.
 	- `KEY_NAME`: name of the service account key.
-	- This set up allows you to store and use multiple keys.
+        - This setup allows you to store and use multiple keys.
 	```python
 	# Service Account Credentials
 	KEY_PATH = "Path to folder containing Service Account Keys"
@@ -115,7 +117,8 @@ A demonstration on building a data pipeline that moves data from iSAMS API endpo
 	bq_client = bq.Client(credentials=service_acc_creds, project=service_acc_creds.project_id)
 	```
 
-### Pipeline configuration
+### Pipeline Configuration
+
 1. Add the pipeline data to the `isams_dataset_endpoints` dictionary in `python_utils/formats.py`:
 	- key: The name of the endpoint.
 	- values:
@@ -167,7 +170,7 @@ A demonstration on building a data pipeline that moves data from iSAMS API endpo
 	]
 	```
 
-2. Add a function to modify the data received from the endpoint in `python_utils/modify_cols.py`. E.g. you want to modify the date format of certain columns in  `school_terms` endpoint:
+2. Add a function to modify the data received from the endpoint in `python_utils/modify_cols.py`. For example, you want to modify the date format of certain columns in the `school_terms` endpoint:
 	```py
 	import pandas as pd
 
@@ -211,22 +214,24 @@ A demonstration on building a data pipeline that moves data from iSAMS API endpo
 
 	The other endpoints will be skipped.
 
-### Script logic:
+### Script Logic
+
 You have finished the configuration for the main process. This is what happens when you execute the script:
 
-1. The script iterates through each endpoint and process them according to their ``page`` type as defined in `python_utils/formats.py`.
-	- `'single-page'` endpoints will trigger `single_page_endpoint()` function and have its data received and loaded in one go.
-	- `'multi-page'` endpoints will trigger `multi_page_endpoint()` fucntion which processes and loads data by every 1000 row as it needs to go through multiple pages.
-	- Both functions have the option to append to or truncate the target BigQuery table. Use append by setting `trunc_flag` to `True` and truncate mode by setting `trunc_flag` to `False`.
+1. The script iterates through each endpoint and processes them according to their `page` type as defined in `python_utils/formats.py`.
+        - `'single-page'` endpoints will trigger `single_page_endpoint()` function and have their data received and loaded in one go.
+        - `'multi-page'` endpoints will trigger `multi_page_endpoint()` function which processes and loads data every 1,000 rows as it needs to go through multiple pages.
+        - Both functions have the option to append to or truncate the target BigQuery table. Use append mode by setting `trunc_flag` to `True` and truncate mode by setting `trunc_flag` to `False`.
 
-2. When `single_page_endpoint()` or `multi_page_endpoint()` function is called, it will call `mod_endpoints()` function to trigger the function in `python_utils/modify_cols.py` to modify the data for specific endpoints.
+2. When `single_page_endpoint()` or `multi_page_endpoint()` is called, it calls `mod_endpoints()` in `python_utils/modify_cols.py` to modify the data for specific endpoints.
 
 ---
 
 ## Scheduling
 
-### Job script: `isams_pipeline.sh` 
-1. `isams_pipeline.sh` assumes the script is stored in `/home/isams_pipeline/`. If you use a different directory, do change the working directory here:
+### Job Script: `isams_pipeline.sh`
+
+1. `isams_pipeline.sh` assumes the script is stored in `/home/isams_pipeline/`. If you use a different directory, change the working directory here:
 	```bash
 	# Main pipeline execution
 	{
@@ -244,14 +249,14 @@ You have finished the configuration for the main process. This is what happens w
 	- handle logging
 	- intercept error messages and failed executions
 
-3. Logging logic:
+3. Logging Logic:
 	- Truncate `/var/log/isams_pipeline.log` to clear previous logs.
 	- Write logs to `/var/log/isams_pipeline.log`.
 	- Create a copy of `/var/log/isams_pipeline.log` with a timestamp (`/var/log/isams_pipeline_TIMESTAMP.log`).
 	- Save the log file in an archive folder `/var/log/isams_pipeline_arch`.
 	- This happens during every execution.
 
-### Cron scheduler
+### Cron Scheduler
 
 Schedule a trigger for `isams_pipeline.sh`.
 
@@ -261,13 +266,15 @@ Schedule a trigger for `isams_pipeline.sh`.
 
 ---
 
-## Custom pipelines
+## Custom Pipelines
 
-### Introduction:
-`custom.py` allows you to add functions to add custom functions to process certain endpoints.
+### Introduction
+
+`custom.py` allows you to add custom functions to process certain endpoints.
 `custom.py` already includes an example: `year_group_division` and a `custom_pipelines()` hook.
 
-### Steps:
+### Steps
+
 1. Define your custom functions for processing endpoints in `custom.py`.
 2. Add the function call to `custom_pipelines()`.
 3. Call `custom_pipelines()` in your `main()` function in `iSAMS.py`.
