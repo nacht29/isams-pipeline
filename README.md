@@ -4,7 +4,8 @@ A demonstration on building a data pipeline that moves data from iSAMS API endpo
 
 ## High-level Architecture
 
-![alt text](image.png)
+<img src="docs/architecture.png" alt="Pipeline Architecture" width="600"/>
+
 
 **Explanation:**
 1. A scheduler in the Compute Engine Instance triggers `iSAMS.py`.
